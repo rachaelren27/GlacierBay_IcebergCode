@@ -138,7 +138,6 @@ exp.var.out <- calc_exp_var(bins, areas, D.obs)
 plot(x = exp.var.out[,1], y = exp.var.out[,2], type = 'l')
 plot(x = exp.var.out[,1], y = exp.var.out[,3], type = 'l')
 
-
 # --- Simulate Overlapping Circles ---------------------------------------------
 ## Simulate IPP points
 # simulate GP covariate
