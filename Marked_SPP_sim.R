@@ -9,6 +9,7 @@ library(spatstat)
 library(ggforce)
 library(here)
 library(tictoc)
+library(invgamma)
 
 set.seed(677)
 
@@ -172,3 +173,16 @@ ggplot() +
   # geom_point(aes(x = s.obs[-obs.win.idx,1], y = s.obs[-obs.win.idx,2]), size = 0.5) +
   theme(axis.title = element_blank())
 
+
+# --- Fit cond. mark model -----------------------------------------------------
+source(here("GlacierBay_Iceberg", "GlacierBay_IcebergCode", "cond.mark.mcmc.R"))
+p.marks <- ncol(X.full.marks)
+mu.alpha <- rep(0, p.marks + 1)
+Sig.alpha <- 10*diag(p.marks + 1)
+q <- 0.00001
+r <- 1000000
+out.mark.cond <- cond.mark.mcmc(u.win, cbind(rep(1, nrow(X.win.marks)), X.win.marks),
+                                n.mcmc, mu.alpha, Sig.alpha, q, r)
+
+plot(out.mark.cond$alpha.save[-(1:n.burn),4], type = "l",)
+plot(out.mark.cond$s2.save, type = "l")
