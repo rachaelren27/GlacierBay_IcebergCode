@@ -17,7 +17,7 @@ cond.mark.mcmc <- function(u, X.obs, n.mcmc, mu.alpha, Sig.alpha, q, r){
     X.alpha <- X.obs%*%alpha
     q.tilde <- (n/2) + q
     r.tilde <- 1/(sum((u - X.alpha)^2)/2 + (1/r))
-    s2 <- rinvgamma(1, q.tilde, scale = r.tilde)
+    s2 <- 1/rgamma(1, q.tilde, scale = r.tilde)
     
     alpha.save[k,] <- alpha
     s2.save[k] <- s2
