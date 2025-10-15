@@ -35,50 +35,65 @@ ice.tiff.path <- here("GlacierBay_Iceberg", "seal_ice", "data", date, "created",
                       "filled_tiffs")
 ice.tiff.files <- list.files(ice.tiff.path, pattern = "\\.tif$", full.names = TRUE)
 
-ice.rast <- rast(ice.tiff.files[1])
+# ice.rast <- rast(ice.tiff.files[1])
+# ice.rast[ice.rast != 255] <- NA
+# icebergs <- patches(ice.rast, directions = 8)
+# 
+# ice.poly <- as.polygons(icebergs, dissolve = TRUE)
+# ice.poly <- ice.poly[!is.na(ice.poly[[1]]), ]
+
+tic()
+ncores <- max(1, parallel::detectCores() - 2)
+cl <- makeCluster(ncores)
+registerDoParallel(cl)
+
+# parallel loop
+ice.list <- foreach(f = ice.tiff.files, .packages = c("terra","sf")) %dopar% {
+  ice.rast <- rast(f)
+  ice.rast[ice.rast != 255] <- NA
+  icebergs <- patches(ice.rast, directions = 8)
+
+  ice.poly <- as.polygons(icebergs, dissolve = TRUE)
+  
+  areas <- expanse(ice.poly, unit="m")
+  
+  centers <- centroids(ice.poly)
+  center.coords <- crds(centers) 
+  
+  list(areas = areas, centers = center.coords)
+}
+
+stopCluster(cl)
+toc()
+
+ice.list <- list()
+tic()
+for(i in 1:10){
+ice.rast <- rast(ice.tiff.files[i])
 ice.rast[ice.rast != 255] <- NA
 icebergs <- patches(ice.rast, directions = 8)
 
 ice.poly <- as.polygons(icebergs, dissolve = TRUE)
-ice.poly <- ice.poly[!is.na(ice.poly[[1]]), ]
 
-# ncores <- max(1, parallel::detectCores() - 1)
-# cl <- makeCluster(ncores)
-# registerDoParallel(cl)
-
-# # parallel loop
-# ice.poly.list <- foreach(f = ice.tiff.files, .packages = c("terra","sf")) %dopar% {
-#   ice.rast <- rast(f)
-#   ice.rast[ice.rast != 255] <- NA
-#   icebergs <- patches(ice.rast, directions = 8)
-#   
-#   ice.poly <- as.polygons(icebergs, dissolve = TRUE)
-#   ice.poly <- ice.poly[!is.na(ice.poly[[1]]), ]
-#   st_as_sf(ice.poly)
-# }
-# 
-# stopCluster(cl)
-
-# # combine results
-# ice.poly <- do.call(rbind, ice.poly.list)
-# ice.poly <- st_union(ice.poly)
-
-# find areas
-areas.all <- expanse(ice.poly, unit="m")
-ice.poly <- ice.poly[which(areas.all > 1.6)]
-areas <- areas.all[which(areas.all > 1.6)]
+areas <- expanse(ice.poly, unit="m")
+ice.idx <- which(areas > 1.6)
+areas <- areas[ice.idx]
+ice.poly <- ice.poly[ice.idx]
 
 centers <- centroids(ice.poly)
-center.coords.all <- crds(centers)
+center.coords <- crds(centers) 
 
-plot(ice.poly)
+ice.list[[i]] <- list(areas = areas, centers = center.coords)
+rm(ice.poly)
+rm(icebergs)
+rm(ice.rast)
+gc()
+print(i)
+}
+toc()
 
-plot(bath.rast)
-points(center.coords, pch = 18)
-
-ggplot() + 
-  geom_sf(data = st_as_sf(ice.poly)) + 
-  geom_sf(data = st_buffer(st_as_sf(centers[-na.row.idx]), dist = radii), color = "red", fill = NA)
+areas <- unlist(lapply(ice.list, `[[`, "areas"))
+centers <- do.call(rbind, lapply(ice.list, `[[`, "centers"))
 
 
 # --- Read in covariates -------------------------------------------------------
