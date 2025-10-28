@@ -57,6 +57,7 @@ s.full <- expand.grid(x = x.full, y = y.full)
 
 ds <- (x.full[2] - x.full[1])^2
 
+
 # --- Simulate GP covariate ----------------------------------------------------
 GP_2D_sim <- function(n.grid, domain.range, mu, sig2, phi, nu){
   s1 <- seq(domain.range[1], domain.range[2], length.out = n.grid)
@@ -75,8 +76,8 @@ GP_2D_sim <- function(n.grid, domain.range, mu, sig2, phi, nu){
 
 mu <- 0
 sig2 <- 0.5
-phi <- 0.04
-nu <- 0.0001
+phi <- 0.2
+nu <- 0.00001
 
 s1 <- seq(domain.range[1], domain.range[2], length.out = n.grid)
 s2 <- seq(domain.range[1], domain.range[2], length.out = n.grid)
@@ -141,8 +142,9 @@ ggplot() +
   # geom_point(aes(x = s.obs[-obs.win.idx,1], y = s.obs[-obs.win.idx,2]), size = 0.5) +
   theme(axis.title = element_blank())
 
+
 # --- Fit SPP w/ complete likelihood -------------------------------------------
-n.mcmc <- 10000
+n.mcmc <- 100000
 source(here("GlacierBay_Seal", "GlacierBay_SealCode", "spp_win_2D", "spp.comp.mcmc.R"))
 tic()
 out.comp.full <- spp.comp.mcmc(s.win, X.win, X.win.full, ds, n.mcmc, 0.1, 0.01)
@@ -161,56 +163,127 @@ matplot(t(beta.save),lty=1,type="l")
 abline(h=beta,col=rgb(0,1,0,.8),lty=2)
 
 
+# --- Berman Turner Device -----------------------------------------------------
+n.bg <- 10000
+bg.pts <- rpoint(n.bg, win = combined.window)
+
+# prepare covariates for background sample 
+bg.mat <- cbind(bg.pts$x, bg.pts$y)
+
+bg.idx <- cellFromXY(full.raster, bg.mat)
+X.bern <- rbind(X.win, X.full[bg.idx,])
+y.bern <- rep(0, n + n.bg)
+y.bern[1:n] <- 1
+bern.df <- data.frame(y = y.bern, x1 = X.bern[,1], x2 = X.bern[,2], x3 = X.bern[,3])
+
+
+# --- Fit SPP w/ GLM-E ---------------------------------------------------------
+n.mcmc <- 100000
+n.burn <- 0.1*n.mcmc
+
+## stage 1
+out.glm <- glm(y ~ x1 + x2 + x3, family = binomial(link="logit"), data = bern.df)
+beta.glm <- coef(out.glm)[-1]
+vcov.glm <- vcov(out.glm)[-1,-1]
+# sample from glm estimated density
+beta.save <- t(mvnfast::rmvn(n.mcmc, mu = beta.glm, sigma = vcov.glm))
+
+## stage 2
+cl <- makeCluster(detectCores()-1)
+registerDoParallel(cl)
+
+tic()
+lam.int.save <- foreach(k = 1:ncol(beta.save), .combine = c) %dopar% {
+  lam.int <- sum(exp(log(ds) + X.win.full%*%beta.save[,k]))
+  return(lam.int)
+}
+
+X.beta.sum.save <- foreach(k = 1:ncol(beta.save)) %dopar% {
+  X.beta.sum <- sum(X.win%*%beta.save[,k])
+  return(X.beta.sum)
+}
+toc() # 31 sec
+
+stopCluster(cl) 
+
+out.glm2 <- list(beta.save = beta.save, mu.beta = beta.glm, sigma.beta = vcov.glm,
+                 n.mcmc = n.mcmc, n = n, ds = ds, X.full = X.win.full,
+                 X.beta.sum.save = X.beta.sum.save, lam.int.save = lam.int.save)
+
+## stage 3
+source(here("GlacierBay_Seal", "GlacierBay_SealCode", "spp.stg3.mcmc.nb.R"))
+out.glm3 <- spp.stg3.mcmc.nb(out.glm2)
+
+beta.save <- out.glm3$beta.save
+beta.0.save <- out.glm3$beta.0.save
+
+layout(matrix(1:2,2,1))
+plot(beta.0.save,type="l")
+abline(h=beta.0,col=rgb(0,1,0,.8),lty=2)
+matplot(t(beta.save),lty=1,type="l")
+abline(h=beta,col=rgb(0,1,0,.8),lty=2)
+
 # --- Generate marks -----------------------------------------------------------
 alpha.0 <- -6
-alpha <- c(-0.1, 0.1, -0.1, -0.3)
-X.full.marks <- scale(cbind(X.full, lam.full))
-xi.full <- alpha.0 + X.full.marks%*%alpha
+alpha <- c(-0.1, 0.1, -0.1)
+gamma <- -0.75
+xi.full <- alpha.0 + X.full%*%(alpha + gamma*beta)
 xi.full.rast <- rasterFromXYZ(cbind(x = s.full[,1], y = s.full[,2],
                                           z = xi.full))
 
 win.idx <- cellFromXY(full.raster, s.win) # full -> windowed
-X.win.marks <- X.full.marks[win.idx,]
-
-obs.full.idx <- cellFromXY(full.raster, cbind(x = s.obs[,1], y = s.obs[,2])) # full -> full observed
-X.obs.marks <- scale(cbind(X.obs, lam.full[obs.full.idx]))
-
-u.win <- rnorm(n, alpha.0 + X.win.marks%*%alpha, 0.75)
-u.nonwin <- rnorm(N - n, alpha.0 + X.obs.marks[-obs.win.idx,]%*%alpha, 0.75)
+s2.u <- 0.75^2
+u.win <- rnorm(n, xi.full[full.win.idx], s2.u)
+# u.nonwin <- rnorm(N - n, alpha.0 + X.obs.marks[-obs.win.idx,]%*%alpha, 0.75)
 
 ggplot() +
   geom_sf(data = domain.sf) +
   geom_sf(data = combined.window.sf) +
   geom_circle(aes(x0 = s.win[,1], y0 = 1.05 - s.win[,2], r = exp(u.win)), color = "red", fill = NA) +
-  geom_circle(aes(x0 = s.obs[-obs.win.idx,1], y0 = 1.05 - s.obs[-obs.win.idx,2],
-                  r = exp(u.nonwin)), color = "grey", fill = NA) +
+  # geom_circle(aes(x0 = s.obs[-obs.win.idx,1], y0 = 1.05 - s.obs[-obs.win.idx,2],
+  #                 r = exp(u.nonwin)), color = "grey", fill = NA) +
   theme(axis.title = element_blank())
 
 
 # --- Fit cond. mark model -----------------------------------------------------
 source(here("GlacierBay_Iceberg", "GlacierBay_IcebergCode", "cond.mark.mcmc.R"))
-p.marks <- ncol(X.full.marks)
-mu.alpha <- rep(0, p.marks + 1)
-Sig.alpha <- 10*diag(p.marks + 1)
+p <- ncol(X.win)
+mu.alpha <- rep(0, p + 1)
+Sig.alpha <- 100*diag(p + 1)
+mu.gamma <- 0
+s2.gamma <- 100
 q <- 0.0001
 r <- 10000
-out.mark.cond <- cond.mark.mcmc(u.win, cbind(rep(1, nrow(X.win.marks)), X.win.marks),
-                                n.mcmc, mu.alpha, Sig.alpha, q, r)
+tic()
+out.mark.cond <- cond.mark.mcmc(u.win, X.win, beta.save, n.mcmc, 
+                                mu.alpha, Sig.alpha, mu.gamma, s2.gamma, q, r)
+toc()
 
 alpha.save <- t(out.mark.cond$alpha.save[-(1:n.burn),])
-s2.save <- out.mark.cond$s2.save
+gamma.save <- out.mark.cond$gamma.save[-(1:n.burn)]
+beta.save <- t(out.mark.cond$beta.save[-(1:n.burn),])
+s2.u.save <- out.mark.cond$s2.u.save[-(1:n.burn)]
 
-par(mfrow = c(3,2))
-plot(out.mark.cond$alpha.save[-(1:n.burn),1], type = "l", ylab = "alpha_0")
+par(mfrow = c(3,3))
+plot(alpha.save[1,], type = "l", ylab = "alpha_0")
 abline(h = alpha.0, col = "green", lty = 2)
 
-for(i in 1:p.marks){
-  plot(out.mark.cond$alpha.save[-(1:n.burn),i+1], type = "l", ylab = paste("alpha_", i))
+for(i in 1:p){
+  plot(alpha.save[i+1,], type = "l", ylab = paste("alpha_", i))
   abline(h = alpha[i], col = "green", lty = 2)
 }
 
-plot(out.mark.cond$s2.save, type = "l", ylab = "s2")
-abline(h = 0.75^2, col = "green", lty = 2)
+plot(gamma.save, type = "l", ylab = "gamma")
+abline(h = gamma, col = "green", lty = 2)
+
+for(i in 1:p){
+  plot(beta.save[i,], type = "l", ylab = paste("beta_", i))
+  abline(h = beta[i], col = "green", lty = 2)
+}
+
+plot(s2.u.save, type = "l", ylab = "s2")
+abline(h = s2.u, col = "green", lty = 2)
+
 
 # --- N posterior predictive ---------------------------------------------------
 N.comp.save <- rep(0, n.mcmc - n.burn)
