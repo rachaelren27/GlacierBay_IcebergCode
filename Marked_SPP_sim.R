@@ -94,6 +94,7 @@ ggplot() +
   coord_fixed() +
   theme_minimal()
 
+
 # --- Simulate from windowed IPP -----------------------------------------------
 beta.0 <- 7
 beta <- c(0.5, 0.5, 1)
@@ -226,15 +227,15 @@ abline(h=beta,col=rgb(0,1,0,.8),lty=2)
 
 # --- Generate marks -----------------------------------------------------------
 alpha.0 <- -6
-alpha <- c(-0.1, 0.1, -0.1)
+alpha <- c(-1, 0.1, -1)
 gamma <- -0.1
-xi.full <- alpha.0 + X.full%*%alpha + gamma*scale(exp(X.full%*%beta))
+xi.full <- alpha.0 + X.full%*%alpha + gamma*exp(X.full%*%beta)
 xi.full.rast <- rasterFromXYZ(cbind(x = s.full[,1], y = s.full[,2],
                                           z = xi.full))
 
 win.idx <- cellFromXY(full.raster, s.win) # full -> windowed
 s2.u <- 0.5^2
-u.win <- rnorm(n, xi.full[full.win.idx], sqrt(s2.u))
+u.win <- rnorm(n, xi.full[win.idx], sqrt(s2.u))
 # u.nonwin <- rnorm(N - n, alpha.0 + X.obs.marks[-obs.win.idx,]%*%alpha, 0.75)
 
 ggplot() +

@@ -11,13 +11,13 @@ cond.mark.mcmc <- function(u, X, beta.prop, n.mcmc, mu.alpha, Sig.alpha,
   beta.save <- matrix(0, n.mcmc, p)
   
   # initialize values
-  alpha <- c(-6, -0.1, 0.1, -0.1)
-  gamma <- -0.1
-  s2.u <- 0.5^2
-  beta <- beta.prop[, n.mcmc]
+  alpha <- rep(0, p+1)
+  gamma <- 0
+  s2.u <- 1
+  beta <- beta.prop[, ncol(beta.prop)]
   
   X.plus.alpha <- X.plus%*%alpha
-  lambda <- scale(exp(X%*%beta))
+  lambda <- exp(X%*%beta)
   s2.u.I.inv <- Matrix((1/s2.u)*diag(n), sparse = TRUE)
   
   Sig.alpha.inv <- solve(Sig.alpha)
@@ -30,12 +30,12 @@ cond.mark.mcmc <- function(u, X, beta.prop, n.mcmc, mu.alpha, Sig.alpha,
     idx.star <- sample(1:n.mcmc, 1)
     beta.star <- c(beta.prop[,idx.star])
     
-    mh.1 <- sum(dnorm(u,X.plus.alpha + gamma*scale(exp(X%*%beta.star)), sqrt(s2.u), log = TRUE))
+    mh.1 <- sum(dnorm(u,X.plus.alpha + gamma*exp(X%*%beta.star), sqrt(s2.u), log = TRUE))
     mh.2 <- sum(dnorm(u,X.plus.alpha + gamma*lambda, sqrt(s2.u), log = TRUE))
     
     if(exp(mh.1 - mh.2) > runif(1)){
       beta <- beta.star
-      lambda <- scale(exp(X%*%beta))
+      lambda <- exp(X%*%beta)
       accept <- accept + 1
     }
     
