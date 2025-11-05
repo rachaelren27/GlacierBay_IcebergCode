@@ -12,6 +12,7 @@ library(tictoc)
 library(parallel)
 library(foreach)
 library(doParallel)
+library(Matrix)
 
 set.seed(677)
 
@@ -94,8 +95,8 @@ ggplot() +
   theme_minimal()
 
 # --- Simulate from windowed IPP -----------------------------------------------
-beta.0 <- 6
-beta <- c(-0.5, -0.5, 1)
+beta.0 <- 7
+beta <- c(0.5, 0.5, 1)
 
 X.full <- scale(cbind(locs[,1], locs[,2], y.sim))
 
@@ -164,7 +165,7 @@ abline(h=beta,col=rgb(0,1,0,.8),lty=2)
 
 
 # --- Berman Turner Device -----------------------------------------------------
-n.bg <- 10000
+n.bg <- 100000
 bg.pts <- rpoint(n.bg, win = combined.window)
 
 # prepare covariates for background sample 
@@ -226,14 +227,14 @@ abline(h=beta,col=rgb(0,1,0,.8),lty=2)
 # --- Generate marks -----------------------------------------------------------
 alpha.0 <- -6
 alpha <- c(-0.1, 0.1, -0.1)
-gamma <- -0.75
-xi.full <- alpha.0 + X.full%*%(alpha + gamma*beta)
+gamma <- -0.1
+xi.full <- alpha.0 + X.full%*%alpha + gamma*scale(exp(X.full%*%beta))
 xi.full.rast <- rasterFromXYZ(cbind(x = s.full[,1], y = s.full[,2],
                                           z = xi.full))
 
 win.idx <- cellFromXY(full.raster, s.win) # full -> windowed
-s2.u <- 0.75^2
-u.win <- rnorm(n, xi.full[full.win.idx], s2.u)
+s2.u <- 0.5^2
+u.win <- rnorm(n, xi.full[full.win.idx], sqrt(s2.u))
 # u.nonwin <- rnorm(N - n, alpha.0 + X.obs.marks[-obs.win.idx,]%*%alpha, 0.75)
 
 ggplot() +
@@ -249,11 +250,11 @@ ggplot() +
 source(here("GlacierBay_Iceberg", "GlacierBay_IcebergCode", "cond.mark.mcmc.R"))
 p <- ncol(X.win)
 mu.alpha <- rep(0, p + 1)
-Sig.alpha <- 100*diag(p + 1)
+Sig.alpha <- 10000*diag(p + 1)
 mu.gamma <- 0
-s2.gamma <- 100
-q <- 0.0001
-r <- 10000
+s2.gamma <- 10000
+q <- 0.00001
+r <- 100000
 tic()
 out.mark.cond <- cond.mark.mcmc(u.win, X.win, beta.save, n.mcmc, 
                                 mu.alpha, Sig.alpha, mu.gamma, s2.gamma, q, r)
