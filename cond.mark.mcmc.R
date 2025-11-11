@@ -28,7 +28,7 @@ cond.mark.mcmc <- function(u, X, beta.prop, n.mcmc, mu.alpha, s2.alpha,
     idx.star <- sample(1:n.mcmc, 1)
     beta.star <- c(beta.prop[,idx.star])
     
-    mh.1 <- sum(dnorm(u,X.plus.alpha + gamma*exp(X%*%beta.star), sqrt(s2.u), log = TRUE))
+    mh.1 <- sum(dnorm(u, X.plus.alpha + gamma*exp(X%*%beta.star), sqrt(s2.u), log = TRUE))
     mh.2 <- sum(dnorm(u,X.plus.alpha + gamma*lambda, sqrt(s2.u), log = TRUE))
     
     if(exp(mh.1 - mh.2) > runif(1)){
@@ -43,7 +43,7 @@ cond.mark.mcmc <- function(u, X, beta.prop, n.mcmc, mu.alpha, s2.alpha,
     gamma <- rnorm(1, b.gamma/a.gamma, sqrt(1/a.gamma))
     
     # update alpha
-    A.alpha <- X.plus.2/s2.u + diag(p)/s2.alpha
+    A.alpha <- X.plus.2/s2.u + diag(p+1)/s2.alpha
     b.alpha <- t(X.plus)%*%(u - gamma*lambda)/s2.u + mu.alpha/s2.alpha
     A.alpha.inv <- solve(A.alpha)
     alpha <- t(rmvn(1, A.alpha.inv%*%b.alpha, A.alpha.inv))

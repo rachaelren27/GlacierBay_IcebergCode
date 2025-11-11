@@ -203,7 +203,7 @@ X.beta.sum.save <- foreach(k = 1:ncol(beta.save)) %dopar% {
   X.beta.sum <- sum(X.win%*%beta.save[,k])
   return(X.beta.sum)
 }
-toc() # 31 sec
+toc() # 24 sec
 
 stopCluster(cl) 
 
@@ -213,7 +213,9 @@ out.glm2 <- list(beta.save = beta.save, mu.beta = beta.glm, sigma.beta = vcov.gl
 
 ## stage 3
 source(here("GlacierBay_Seal", "GlacierBay_SealCode", "spp.stg3.mcmc.nb.R"))
+tic()
 out.glm3 <- spp.stg3.mcmc.nb(out.glm2)
+toc() # 2.7 sec
 
 beta.save <- out.glm3$beta.save
 beta.0.save <- out.glm3$beta.0.save
@@ -257,8 +259,8 @@ q <- 0.00001
 r <- 100000
 tic()
 out.mark.cond <- cond.mark.mcmc(u.win, X.win, out.glm3$beta.save, n.mcmc, 
-                                mu.alpha, Sig.alpha, mu.gamma, s2.gamma, q, r)
-toc()
+                                mu.alpha, s2.alpha, mu.gamma, s2.gamma, q, r)
+toc() # 12.6 sec
 
 alpha.save <- t(out.mark.cond$alpha.save[-(1:n.burn),])
 gamma.save <- out.mark.cond$gamma.save[-(1:n.burn)]
@@ -332,6 +334,49 @@ for(i in 1:p){
 
 plot(s2.u.save, type = "l", ylab = "s2")
 abline(h = s2.u, col = "green", lty = 2)
+
+
+# --- Compare Posterior Inference ----------------------------------------------
+par(mfrow = c(2,5))
+hist(out.comp.mark$beta.0.save[-(1:n.burn)], prob=TRUE, breaks=60,main="", 
+     xlab=bquote(beta[0]), ylim = c(0,10))
+lines(density(out.glm3$beta.0.save[-(1:n.burn)], n=1000, adj=2), col="green",
+      lwd=2)
+abline(v = beta.0, lty = "dashed", lwd = 2, col = "red")
+
+for(i in 1:p){
+hist(out.comp.mark$beta.save[-(1:n.burn),i], prob=TRUE, breaks=60,main="", 
+     xlab=bquote(beta[i]), ylim = c(0,15))
+lines(density(out.mark.cond$beta.save[-(1:n.burn),i], n=1000, adj=2), col="green",
+      lwd=2)
+abline(v = beta[i], lty = "dashed", lwd = 2, col = "red")
+}
+
+hist(out.comp.mark$gamma.save[-(1:n.burn)], prob=TRUE, breaks=60,main="", 
+     xlab=bquote(gamma), ylim = c(0,50))
+lines(density(out.mark.cond$gamma.save[-(1:n.burn)], n=1000, adj=2), col="green",
+      lwd=2)
+abline(v = gamma, lty = "dashed", lwd = 2, col = "red")
+
+hist(out.comp.mark$alpha.save[-(1:n.burn),1], prob=TRUE, breaks=60,main="", 
+     xlab=bquote(alpha[1]), ylim = c(0,15))
+lines(density(out.mark.cond$alpha.save[-(1:n.burn),1], n=1000, adj=2), col="green",
+      lwd=2)
+abline(v = alpha.0, lty = "dashed", lwd = 2, col = "red")
+
+for(i in 2:(p+1)){
+  hist(out.comp.mark$alpha.save[-(1:n.burn),i], prob=TRUE, breaks=60,main="", 
+       xlab=bquote(alpha[i]), ylim = c(0,20))
+  lines(density(out.mark.cond$alpha.save[-(1:n.burn),i], n=1000, adj=2), col="green",
+        lwd=2)
+  abline(v = alpha[i-1], lty = "dashed", lwd = 2, col = "red")
+}
+
+hist(out.comp.mark$s2.u.save[-(1:n.burn)], prob=TRUE, breaks=60,main="", 
+     xlab=bquote(sigma^2), ylim = c(0,50))
+lines(density(out.mark.cond$s2.u.save[-(1:n.burn)], n=1000, adj=2), col="green",
+      lwd=2)
+abline(v = s2.u, lty = "dashed", lwd = 2, col = "red")
 
 
 # --- N posterior predictive ---------------------------------------------------
