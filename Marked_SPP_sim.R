@@ -58,7 +58,6 @@ s.full <- expand.grid(x = x.full, y = y.full)
 
 ds <- (x.full[2] - x.full[1])^2
 
-
 # --- Simulate GP covariate ----------------------------------------------------
 GP_2D_sim <- function(n.grid, domain.range, mu, sig2, phi, nu){
   s1 <- seq(domain.range[1], domain.range[2], length.out = n.grid)
@@ -127,7 +126,7 @@ obs.win.idx <- (1:N)[obs.win] # full observed -> observed windowed
 n <- length(obs.win.idx)
 
 full.win <- inside.owin(s.full[,1], s.full[,2], combined.window)
-full.win.idx <- (1:n.grid^2)[full.win] # full -> full windowed
+full.win.idx <- (1:n.grid^2)[full.win] # full grid -> full windowed
 
 s.win <- s.obs[obs.win.idx,]
 X.win <- X.obs[obs.win.idx,]
@@ -233,7 +232,7 @@ xi.full <- alpha.0 + X.full%*%alpha + gamma*exp(X.full%*%beta)
 xi.full.rast <- rasterFromXYZ(cbind(x = s.full[,1], y = s.full[,2],
                                           z = xi.full))
 
-win.idx <- cellFromXY(full.raster, s.win) # full -> windowed
+win.idx <- cellFromXY(full.raster, s.win) # full grid -> observed windowed
 s2.u <- 0.5^2
 u.win <- rnorm(n, xi.full[win.idx], sqrt(s2.u))
 # u.nonwin <- rnorm(N - n, alpha.0 + X.obs.marks[-obs.win.idx,]%*%alpha, 0.75)
@@ -251,13 +250,13 @@ ggplot() +
 source(here("GlacierBay_Iceberg", "GlacierBay_IcebergCode", "cond.mark.mcmc.R"))
 p <- ncol(X.win)
 mu.alpha <- rep(0, p + 1)
-Sig.alpha <- 10000*diag(p + 1)
+s2.alpha <- 10000
 mu.gamma <- 0
 s2.gamma <- 10000
 q <- 0.00001
 r <- 100000
 tic()
-out.mark.cond <- cond.mark.mcmc(u.win, X.win, beta.save, n.mcmc, 
+out.mark.cond <- cond.mark.mcmc(u.win, X.win, out.glm3$beta.save, n.mcmc, 
                                 mu.alpha, Sig.alpha, mu.gamma, s2.gamma, q, r)
 toc()
 
@@ -277,6 +276,54 @@ for(i in 1:p){
 
 plot(gamma.save, type = "l", ylab = "gamma")
 abline(h = gamma, col = "green", lty = 2)
+
+for(i in 1:p){
+  plot(beta.save[i,], type = "l", ylab = paste("beta_", i))
+  abline(h = beta[i], col = "green", lty = 2)
+}
+
+plot(s2.u.save, type = "l", ylab = "s2")
+abline(h = s2.u, col = "green", lty = 2)
+
+
+# --- Single stage MCMC --------------------------------------------------------
+source(here("GlacierBay_Iceberg", "GlacierBay_IcebergCode", "comp.mark.mcmc.R"))
+a.zeta <- 0.0000001
+b.zeta <- 0.0000001
+mu.beta <- rep(0, p)
+s2.beta <- 10000
+zeta.tune <- 0.01
+beta.tune <- 0.0001
+tic()
+out.comp.mark <- comp.mark.mcmc(s.win, n, u.win, X.full, full.win.idx, win.idx, ds, 
+                                a.zeta, b.zeta, zeta.tune,
+                                mu.beta, s2.beta, beta.tune, 
+                                mu.alpha, s2.alpha, mu.gamma, s2.gamma, q, r,
+                                n.mcmc)
+toc() # 34.75 sec
+
+# trace plots
+n.burn <- 11000
+alpha.save <- t(out.comp.mark$alpha.save[-(1:n.burn),])
+gamma.save <- out.comp.mark$gamma.save[-(1:n.burn)]
+beta.0.save <- out.comp.mark$beta.0.save[-(1:n.burn)]
+beta.save <- t(out.comp.mark$beta.save[-(1:n.burn),])
+s2.u.save <- out.comp.mark$s2.u.save[-(1:n.burn)]
+
+par(mfrow = c(2,5))
+plot(alpha.save[1,], type = "l", ylab = "alpha_0")
+abline(h = alpha.0, col = "green", lty = 2)
+
+for(i in 1:p){
+  plot(alpha.save[i+1,], type = "l", ylab = paste("alpha_", i))
+  abline(h = alpha[i], col = "green", lty = 2)
+}
+
+plot(gamma.save, type = "l", ylab = "gamma")
+abline(h = gamma, col = "green", lty = 2)
+
+plot(beta.0.save, type = "l", ylab = "beta_0")
+abline(h = beta.0, col = "green", lty = 2)
 
 for(i in 1:p){
   plot(beta.save[i,], type = "l", ylab = paste("beta_", i))

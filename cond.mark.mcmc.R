@@ -1,4 +1,4 @@
-cond.mark.mcmc <- function(u, X, beta.prop, n.mcmc, mu.alpha, Sig.alpha,
+cond.mark.mcmc <- function(u, X, beta.prop, n.mcmc, mu.alpha, s2.alpha,
                            mu.gamma, s2.gamma, q, r){
   n <- length(u)
   p <- ncol(X)
@@ -18,9 +18,7 @@ cond.mark.mcmc <- function(u, X, beta.prop, n.mcmc, mu.alpha, Sig.alpha,
   
   X.plus.alpha <- X.plus%*%alpha
   lambda <- exp(X%*%beta)
-  s2.u.I.inv <- Matrix((1/s2.u)*diag(n), sparse = TRUE)
-  
-  Sig.alpha.inv <- solve(Sig.alpha)
+  X.plus.2 <- t(X.plus)%*%X.plus
   
   accept <- 0
   
@@ -40,13 +38,13 @@ cond.mark.mcmc <- function(u, X, beta.prop, n.mcmc, mu.alpha, Sig.alpha,
     }
     
     # update gamma
-    a.gamma <- (t(lambda)%*%s2.u.I.inv%*%lambda + (1/s2.gamma))[1,1]
-    b.gamma <- (t(u - X.plus.alpha)%*%s2.u.I.inv%*%lambda + (mu.gamma/s2.gamma))[1,1]
+    a.gamma <- sum(lambda^2)/s2.u + 1/s2.gamma
+    b.gamma <- (t(u - X.plus.alpha)%*%lambda)/s2.u + mu.gamma/s2.gamma
     gamma <- rnorm(1, b.gamma/a.gamma, sqrt(1/a.gamma))
     
     # update alpha
-    A.alpha <- t(X.plus)%*%X.plus/s2.u + Sig.alpha.inv
-    b.alpha <- t(X.plus) %*% (u - gamma*lambda) / s2.u + Sig.alpha.inv %*% mu.alpha
+    A.alpha <- X.plus.2/s2.u + diag(p)/s2.alpha
+    b.alpha <- t(X.plus)%*%(u - gamma*lambda)/s2.u + mu.alpha/s2.alpha
     A.alpha.inv <- solve(A.alpha)
     alpha <- t(rmvn(1, A.alpha.inv%*%b.alpha, A.alpha.inv))
     X.plus.alpha <- X.plus%*%alpha
@@ -55,7 +53,6 @@ cond.mark.mcmc <- function(u, X, beta.prop, n.mcmc, mu.alpha, Sig.alpha,
     q.tilde <- (n/2) + q
     r.tilde <- 1/(sum((u - (X.plus.alpha + gamma*lambda))^2)/2 + (1/r))
     s2.u <- 1/rgamma(1, q.tilde, scale = r.tilde)
-    s2.u.I.inv <- Matrix((1/s2.u)*diag(n), sparse = TRUE)
     
     alpha.save[k,] <- alpha
     gamma.save[k] <- gamma
