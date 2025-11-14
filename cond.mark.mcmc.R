@@ -1,4 +1,4 @@
-cond.mark.mcmc <- function(u, X, beta.prop, n.mcmc, mu.alpha, s2.alpha,
+cond.mark.mcmc <- function(u, X, beta.0.prop, beta.prop, n.mcmc, mu.alpha, s2.alpha,
                            mu.gamma, s2.gamma, q, r){
   n <- length(u)
   p <- ncol(X)
@@ -8,12 +8,14 @@ cond.mark.mcmc <- function(u, X, beta.prop, n.mcmc, mu.alpha, s2.alpha,
   alpha.save <- matrix(0, n.mcmc, p+1)
   gamma.save <- rep(0, n.mcmc)
   s2.u.save <- rep(0, n.mcmc)
+  beta.0.save <- rep(0, n.mcmc)
   beta.save <- matrix(0, n.mcmc, p)
   
   # initialize values
   alpha <- rep(0, p+1)
   gamma <- 0
   s2.u <- 1
+  beta.0 <- beta.0.prop[, length(beta.0)]
   beta <- beta.prop[, ncol(beta.prop)]
   
   X.plus.alpha <- X.plus%*%alpha
@@ -27,12 +29,14 @@ cond.mark.mcmc <- function(u, X, beta.prop, n.mcmc, mu.alpha, s2.alpha,
     # propose and update beta
     idx.star <- sample(1:n.mcmc, 1)
     beta.star <- c(beta.prop[,idx.star])
+    beta.0.star <- beta.0.prop[idx.star]
     
     mh.1 <- sum(dnorm(u, X.plus.alpha + gamma*exp(X%*%beta.star), sqrt(s2.u), log = TRUE))
     mh.2 <- sum(dnorm(u,X.plus.alpha + gamma*lambda, sqrt(s2.u), log = TRUE))
     
     if(exp(mh.1 - mh.2) > runif(1)){
       beta <- beta.star
+      beta.0 <- beta.0.star
       lambda <- exp(X%*%beta)
       accept <- accept + 1
     }
@@ -56,11 +60,13 @@ cond.mark.mcmc <- function(u, X, beta.prop, n.mcmc, mu.alpha, s2.alpha,
     
     alpha.save[k,] <- alpha
     gamma.save[k] <- gamma
+    beta.0.save[k] <- beta.0
     beta.save[k,] <- t(beta)
     s2.u.save[k] <- s2.u
   };cat("\n")
   
   print(paste("Beta acceptance ratio:", accept/n.mcmc))
   
-  return(list(alpha.save = alpha.save, gamma.save = gamma.save, beta.save = beta.save, s2.u.save = s2.u.save))
+  return(list(alpha.save = alpha.save, gamma.save = gamma.save, 
+              beta.0.save = beta.0.save, beta.save = beta.save, s2.u.save = s2.u.save))
 }

@@ -12,7 +12,7 @@ library(tictoc)
 library(parallel)
 library(foreach)
 library(doParallel)
-library(Matrix)
+library(coda)
 
 set.seed(677)
 
@@ -50,7 +50,7 @@ plot(domain)
 plot(combined.window, add = TRUE)
 
 # construct quadrature grid
-n.grid <- 100
+n.grid <- 500
 
 x.full <- seq(domain.range[1], domain.range[2], length.out = n.grid)
 y.full <- seq(domain.range[1], domain.range[2], length.out = n.grid)
@@ -59,37 +59,34 @@ s.full <- expand.grid(x = x.full, y = y.full)
 ds <- (x.full[2] - x.full[1])^2
 
 # --- Simulate GP covariate ----------------------------------------------------
-GP_2D_sim <- function(n.grid, domain.range, mu, sig2, phi, nu){
-  s1 <- seq(domain.range[1], domain.range[2], length.out = n.grid)
-  s2 <- seq(domain.range[1], domain.range[2], length.out = n.grid)
-  locs <- expand.grid(s1, s2)
+GP_2D_sim <- function(n.grid, domain.range, mu = 0,
+                                sig2 = 0.5, phi = 0.2, nu = 1e-5) {
+
+  s <- seq(domain.range[1], domain.range[2], length.out = n.grid)
+  D1 <- as.matrix(dist(s))
+  K <- exp(-(D1^2) / (phi^2) / 2)
+  K <- K + nu * diag(n.grid)
+  R <- chol(K)
+  L <- t(R)
   
-  L <- n.grid^2
+  Z1 <- matrix(rnorm(n.grid * n.grid), n.grid, n.grid)
+  Z2 <- rnorm(n.grid * n.grid)
   
-  D.full <- as.matrix(dist(locs))
-  Sig <- nu*diag(L) + sig2*exp(-(D.full^2)/(phi^2)/2)
+  part1_mat <- L %*% Z1 %*% t(L)
+  part1_vec <- as.vector(part1_mat)
   
-  y.sim <- c(rmvn(1, rep(mu, L), Sig))
+  y.sim <- mu + sqrt(sig2) * part1_vec + sqrt(nu) * Z2
   
-  return(y.sim)
+  locs <- expand.grid(x = s, y = s)
+  data.frame(x = locs[,1], y = locs[,2], z = y.sim)
 }
 
-mu <- 0
-sig2 <- 0.5
-phi <- 0.2
-nu <- 0.00001
+out.df <- GP_2D_sim(n.grid, domain.range, mu = 0,
+                    sig2 = 0.5, phi = 0.15, nu = 1e-5)
 
-s1 <- seq(domain.range[1], domain.range[2], length.out = n.grid)
-s2 <- seq(domain.range[1], domain.range[2], length.out = n.grid)
-locs <- expand.grid(s1, s2)
-
-y.sim <- GP_2D_sim(n.grid, domain.range, mu, sig2, phi, nu)
-out.df <- data.frame(cbind(s1 = locs[,1], s2 = locs[,2], y = y.sim))
-
-ggplot() +
-  geom_tile(data = out.df, aes(x = s1, y = s2, fill = y)) +
+ggplot(out.df, aes(x = x, y = y, fill = z)) +
+  geom_tile() +
   scale_fill_viridis() +
-  labs(fill = "y", x = "", y = "") +
   coord_fixed() +
   theme_minimal()
 
@@ -98,12 +95,12 @@ ggplot() +
 beta.0 <- 7
 beta <- c(0.5, 0.5, 1)
 
-X.full <- scale(cbind(locs[,1], locs[,2], y.sim))
+X.full <- scale(cbind(s.full[,1], s.full[,2], out.df$z))
 
 lam.full <- exp(beta.0 + X.full%*%beta)
 lam.max <- max(lam.full)
 
-full.df <- as.data.frame(cbind(x = locs[,1], y = locs[,2], z = lam.full))
+full.df <- as.data.frame(cbind(x = s.full[,1], y = s.full[,2], z = lam.full))
 full.raster <- rasterFromXYZ(full.df)
 
 M <- rpois(1, lam.max) 
@@ -203,7 +200,7 @@ X.beta.sum.save <- foreach(k = 1:ncol(beta.save)) %dopar% {
   X.beta.sum <- sum(X.win%*%beta.save[,k])
   return(X.beta.sum)
 }
-toc() # 24 sec
+toc() # 34.2 sec
 
 stopCluster(cl) 
 
@@ -215,7 +212,7 @@ out.glm2 <- list(beta.save = beta.save, mu.beta = beta.glm, sigma.beta = vcov.gl
 source(here("GlacierBay_Seal", "GlacierBay_SealCode", "spp.stg3.mcmc.nb.R"))
 tic()
 out.glm3 <- spp.stg3.mcmc.nb(out.glm2)
-toc() # 2.7 sec
+toc() # 2.9 sec
 
 beta.save <- out.glm3$beta.save
 beta.0.save <- out.glm3$beta.0.save
@@ -226,8 +223,9 @@ abline(h=beta.0,col=rgb(0,1,0,.8),lty=2)
 matplot(t(beta.save),lty=1,type="l")
 abline(h=beta,col=rgb(0,1,0,.8),lty=2)
 
+
 # --- Generate marks -----------------------------------------------------------
-alpha.0 <- -6
+alpha.0 <- -7
 alpha <- c(-1, 0.1, -1)
 gamma <- -0.1
 xi.full <- alpha.0 + X.full%*%alpha + gamma*exp(X.full%*%beta)
@@ -255,24 +253,32 @@ mu.alpha <- rep(0, p + 1)
 s2.alpha <- 10000
 mu.gamma <- 0
 s2.gamma <- 10000
-q <- 0.00001
-r <- 100000
+q <- 0.0000001
+r <- 10000000
 tic()
-out.mark.cond <- cond.mark.mcmc(u.win, X.win, out.glm3$beta.save, n.mcmc, 
-                                mu.alpha, s2.alpha, mu.gamma, s2.gamma, q, r)
-toc() # 12.6 sec
+out.mark.cond <- cond.mark.mcmc(u.win, X.win, out.glm3$beta.0.save, out.glm3$beta.save,
+                                n.mcmc, mu.alpha, s2.alpha, mu.gamma, s2.gamma, q, r)
+toc() # 12.8 sec
 
-alpha.save <- t(out.mark.cond$alpha.save[-(1:n.burn),])
+alpha.save <- out.mark.cond$alpha.save[-(1:n.burn),]
 gamma.save <- out.mark.cond$gamma.save[-(1:n.burn)]
-beta.save <- t(out.mark.cond$beta.save[-(1:n.burn),])
+beta.0.save <- out.mark.cond$beta.0.save[-(1:n.burn)]
+beta.save <- out.mark.cond$beta.save[-(1:n.burn),]
 s2.u.save <- out.mark.cond$s2.u.save[-(1:n.burn)]
 
+# effective sample size
+effectiveSize(beta.0.save)
+effectiveSize(beta.save)
+effectiveSize(gamma.save)
+effectiveSize(alpha.save)
+effectiveSize(s2.u.save)
+
 par(mfrow = c(3,3))
-plot(alpha.save[1,], type = "l", ylab = "alpha_0")
+plot(alpha.save[,1], type = "l", ylab = "alpha_0")
 abline(h = alpha.0, col = "green", lty = 2)
 
 for(i in 1:p){
-  plot(alpha.save[i+1,], type = "l", ylab = paste("alpha_", i))
+  plot(alpha.save[,i+1], type = "l", ylab = paste("alpha_", i))
   abline(h = alpha[i], col = "green", lty = 2)
 }
 
@@ -280,7 +286,7 @@ plot(gamma.save, type = "l", ylab = "gamma")
 abline(h = gamma, col = "green", lty = 2)
 
 for(i in 1:p){
-  plot(beta.save[i,], type = "l", ylab = paste("beta_", i))
+  plot(beta.save[,i], type = "l", ylab = paste("beta_", i))
   abline(h = beta[i], col = "green", lty = 2)
 }
 
@@ -290,34 +296,41 @@ abline(h = s2.u, col = "green", lty = 2)
 
 # --- Single stage MCMC --------------------------------------------------------
 source(here("GlacierBay_Iceberg", "GlacierBay_IcebergCode", "comp.mark.mcmc.R"))
-a.zeta <- 0.0000001
-b.zeta <- 0.0000001
+a.zeta <- 0.0000000001
+b.zeta <- 0.0000000001
 mu.beta <- rep(0, p)
 s2.beta <- 10000
 zeta.tune <- 0.01
-beta.tune <- 0.0001
+beta.tune <- 0.00005
 tic()
 out.comp.mark <- comp.mark.mcmc(s.win, n, u.win, X.full, full.win.idx, win.idx, ds, 
                                 a.zeta, b.zeta, zeta.tune,
                                 mu.beta, s2.beta, beta.tune, 
                                 mu.alpha, s2.alpha, mu.gamma, s2.gamma, q, r,
                                 n.mcmc)
-toc() # 34.75 sec
+toc() # 634 sec (n.grid = 500)
 
 # trace plots
-n.burn <- 11000
-alpha.save <- t(out.comp.mark$alpha.save[-(1:n.burn),])
+n.burn <- 16000
+alpha.save <- out.comp.mark$alpha.save[-(1:n.burn),]
 gamma.save <- out.comp.mark$gamma.save[-(1:n.burn)]
 beta.0.save <- out.comp.mark$beta.0.save[-(1:n.burn)]
-beta.save <- t(out.comp.mark$beta.save[-(1:n.burn),])
+beta.save <- out.comp.mark$beta.save[-(1:n.burn),]
 s2.u.save <- out.comp.mark$s2.u.save[-(1:n.burn)]
 
+# effective sample size
+effectiveSize(beta.0.save)
+effectiveSize(beta.save)
+effectiveSize(gamma.save)
+effectiveSize(alpha.save)
+effectiveSize(s2.u.save)
+
 par(mfrow = c(2,5))
-plot(alpha.save[1,], type = "l", ylab = "alpha_0")
+plot(alpha.save[,1], type = "l", ylab = "alpha_0")
 abline(h = alpha.0, col = "green", lty = 2)
 
 for(i in 1:p){
-  plot(alpha.save[i+1,], type = "l", ylab = paste("alpha_", i))
+  plot(alpha.save[,i+1], type = "l", ylab = paste("alpha_", i))
   abline(h = alpha[i], col = "green", lty = 2)
 }
 
@@ -328,7 +341,7 @@ plot(beta.0.save, type = "l", ylab = "beta_0")
 abline(h = beta.0, col = "green", lty = 2)
 
 for(i in 1:p){
-  plot(beta.save[i,], type = "l", ylab = paste("beta_", i))
+  plot(beta.save[,i], type = "l", ylab = paste("beta_", i))
   abline(h = beta[i], col = "green", lty = 2)
 }
 
@@ -346,7 +359,7 @@ abline(v = beta.0, lty = "dashed", lwd = 2, col = "red")
 
 for(i in 1:p){
 hist(out.comp.mark$beta.save[-(1:n.burn),i], prob=TRUE, breaks=60,main="", 
-     xlab=bquote(beta[i]), ylim = c(0,15))
+     xlab=bquote(beta[i]), ylim = c(0,20))
 lines(density(out.mark.cond$beta.save[-(1:n.burn),i], n=1000, adj=2), col="green",
       lwd=2)
 abline(v = beta[i], lty = "dashed", lwd = 2, col = "red")
@@ -359,7 +372,7 @@ lines(density(out.mark.cond$gamma.save[-(1:n.burn)], n=1000, adj=2), col="green"
 abline(v = gamma, lty = "dashed", lwd = 2, col = "red")
 
 hist(out.comp.mark$alpha.save[-(1:n.burn),1], prob=TRUE, breaks=60,main="", 
-     xlab=bquote(alpha[1]), ylim = c(0,15))
+     xlab=bquote(alpha[1]), ylim = c(0,20))
 lines(density(out.mark.cond$alpha.save[-(1:n.burn),1], n=1000, adj=2), col="green",
       lwd=2)
 abline(v = alpha.0, lty = "dashed", lwd = 2, col = "red")
