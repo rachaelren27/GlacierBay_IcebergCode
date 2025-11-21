@@ -273,7 +273,7 @@ effectiveSize(gamma.save)
 effectiveSize(alpha.save)
 effectiveSize(s2.u.save)
 
-par(mfrow = c(3,3))
+par(mfrow = c(2,5))
 plot(alpha.save[,1], type = "l", ylab = "alpha_0")
 abline(h = alpha.0, col = "green", lty = 2)
 
@@ -284,6 +284,9 @@ for(i in 1:p){
 
 plot(gamma.save, type = "l", ylab = "gamma")
 abline(h = gamma, col = "green", lty = 2)
+
+plot(beta.0.save, type = "l", ylab = "beta_0")
+abline(h = beta.0, col = "green", lty = 2)
 
 for(i in 1:p){
   plot(beta.save[,i], type = "l", ylab = paste("beta_", i))
