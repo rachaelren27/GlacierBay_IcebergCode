@@ -15,7 +15,7 @@ cond.mark.mcmc <- function(u, X, beta.0.prop, beta.prop, n.mcmc, mu.alpha, s2.al
   alpha <- rep(0, p+1)
   gamma <- 0
   s2.u <- 1
-  beta.0 <- beta.0.prop[, length(beta.0)]
+  beta.0 <- beta.0.prop[length(beta.0)]
   beta <- beta.prop[, ncol(beta.prop)]
   
   X.plus.alpha <- X.plus%*%alpha

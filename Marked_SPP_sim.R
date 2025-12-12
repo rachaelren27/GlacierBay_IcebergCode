@@ -14,7 +14,7 @@ library(foreach)
 library(doParallel)
 library(coda)
 
-set.seed(677)
+set.seed(1234)
 
 # --- Construct domain --------------------------------------------------------
 domain.range <- c(0,1.05)
@@ -141,24 +141,24 @@ ggplot() +
   theme(axis.title = element_blank())
 
 
-# --- Fit SPP w/ complete likelihood -------------------------------------------
-n.mcmc <- 100000
-source(here("GlacierBay_Seal", "GlacierBay_SealCode", "spp_win_2D", "spp.comp.mcmc.R"))
-tic()
-out.comp.full <- spp.comp.mcmc(s.win, X.win, X.win.full, ds, n.mcmc, 0.1, 0.01)
-toc() # 385 sec
-
-# discard burn-in
-n.burn <- 0.1*n.mcmc
-beta.0.save <- out.comp.full$beta.0.save[-(1:n.burn)]
-beta.save <- out.comp.full$beta.save[,-(1:n.burn)]
-
-# trace plot
-layout(matrix(1:2,2,1))
-plot(beta.0.save,type="l")
-abline(h=beta.0,col=rgb(0,1,0,.8),lty=2)
-matplot(t(beta.save),lty=1,type="l")
-abline(h=beta,col=rgb(0,1,0,.8),lty=2)
+# # --- Fit SPP w/ complete likelihood -------------------------------------------
+# n.mcmc <- 100000
+# source(here("GlacierBay_Seal", "GlacierBay_SealCode", "spp_win_2D", "spp.comp.mcmc.R"))
+# tic()
+# out.comp.full <- spp.comp.mcmc(s.win, X.win, X.win.full, ds, n.mcmc, 0.1, 0.01)
+# toc() # 385 sec
+# 
+# # discard burn-in
+# n.burn <- 0.1*n.mcmc
+# beta.0.save <- out.comp.full$beta.0.save[-(1:n.burn)]
+# beta.save <- out.comp.full$beta.save[,-(1:n.burn)]
+# 
+# # trace plot
+# layout(matrix(1:2,2,1))
+# plot(beta.0.save,type="l")
+# abline(h=beta.0,col=rgb(0,1,0,.8),lty=2)
+# matplot(t(beta.save),lty=1,type="l")
+# abline(h=beta,col=rgb(0,1,0,.8),lty=2)
 
 
 # --- Berman Turner Device -----------------------------------------------------
@@ -200,7 +200,7 @@ X.beta.sum.save <- foreach(k = 1:ncol(beta.save)) %dopar% {
   X.beta.sum <- sum(X.win%*%beta.save[,k])
   return(X.beta.sum)
 }
-toc() # 34.2 sec
+toc() # 33.3 sec
 
 stopCluster(cl) 
 
@@ -212,7 +212,7 @@ out.glm2 <- list(beta.save = beta.save, mu.beta = beta.glm, sigma.beta = vcov.gl
 source(here("GlacierBay_Seal", "GlacierBay_SealCode", "spp.stg3.mcmc.nb.R"))
 tic()
 out.glm3 <- spp.stg3.mcmc.nb(out.glm2)
-toc() # 2.9 sec
+toc() # 3.1 sec
 
 beta.save <- out.glm3$beta.save
 beta.0.save <- out.glm3$beta.0.save
@@ -258,7 +258,7 @@ r <- 10000000
 tic()
 out.mark.cond <- cond.mark.mcmc(u.win, X.win, out.glm3$beta.0.save, out.glm3$beta.save,
                                 n.mcmc, mu.alpha, s2.alpha, mu.gamma, s2.gamma, q, r)
-toc() # 12.8 sec
+toc() # 12.6 sec
 
 alpha.save <- out.mark.cond$alpha.save[-(1:n.burn),]
 gamma.save <- out.mark.cond$gamma.save[-(1:n.burn)]
@@ -311,7 +311,7 @@ out.comp.mark <- comp.mark.mcmc(s.win, n, u.win, X.full, full.win.idx, win.idx, 
                                 mu.beta, s2.beta, beta.tune, 
                                 mu.alpha, s2.alpha, mu.gamma, s2.gamma, q, r,
                                 n.mcmc)
-toc() # 634 sec (n.grid = 500)
+toc() # 559.2 sec (n.grid = 500)
 
 # trace plots
 n.burn <- 16000
